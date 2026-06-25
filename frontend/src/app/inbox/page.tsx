@@ -211,9 +211,9 @@ export default function InboxPage() {
   useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
   useEffect(() => { filterStatusRef.current = filterStatus; }, [filterStatus]);
 
-  // Polling fallback — refreshes conversation list every 10s in case Supabase Realtime isn't enabled
+  // Polling fallback — refreshes conversation list every 3s
   useEffect(() => {
-    const poll = setInterval(() => loadConversations(true), 10000);
+    const poll = setInterval(() => loadConversations(true), 3000);
     return () => clearInterval(poll);
   }, []);
 
