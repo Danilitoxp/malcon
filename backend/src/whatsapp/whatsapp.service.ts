@@ -485,8 +485,14 @@ export class WhatsappService {
     return newNumber;
   }
 
+  private evoStatusCache: { data: any; expiresAt: number } | null = null;
+
   // 6. Get Evolution API status
   async getEvolutionStatus(): Promise<any> {
+    if (this.evoStatusCache && Date.now() < this.evoStatusCache.expiresAt) {
+      return this.evoStatusCache.data;
+    }
+
     const evoUrl = this.configService.get<string>('EVO_URL');
     const evoApiKey = this.configService.get<string>('EVO_API_KEY');
     const instanceName = this.configService.get<string>('EVO_INSTANCE');
@@ -547,7 +553,7 @@ export class WhatsappService {
         this.logger.warn(`Failed to fetch instance details: ${err.message}`);
       }
 
-      return {
+      const result = {
         configured: true,
         instanceName,
         status: state === 'open' ? 'connected' : 'disconnected',
@@ -556,6 +562,8 @@ export class WhatsappService {
         profilePicUrl,
         url: evoUrl,
       };
+      this.evoStatusCache = { data: result, expiresAt: Date.now() + 20000 };
+      return result;
     } catch (error) {
       this.logger.error(`Error connecting to Evolution API: ${error.message}`);
       return {

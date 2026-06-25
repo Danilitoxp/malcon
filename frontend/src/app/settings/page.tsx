@@ -98,35 +98,32 @@ export default function SettingsPage() {
   const loadSettingsData = async () => {
     setLoading(true);
     setEvoLoading(true);
-    try {
-      const [teamRes, wabaRes] = await Promise.all([
-        supabase.from('profiles').select('*').order('name', { ascending: true }),
-        supabase.from('whatsapp_numbers').select('id, name, phone_number, phone_number_id, waba_id, active')
-      ]);
 
-      if (teamRes.data) setTeam(teamRes.data as Profile[]);
-      if (wabaRes.data) setWhatsappNumbers(wabaRes.data as WhatsappNumber[]);
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
 
-      // Fetch Evolution status from NestJS backend
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (token) {
+    // Load Supabase data and Evolution status in parallel
+    const [teamRes, wabaRes] = await Promise.all([
+      supabase.from('profiles').select('*').order('name', { ascending: true }),
+      supabase.from('whatsapp_numbers').select('id, name, phone_number, phone_number_id, waba_id, active'),
+    ]);
+
+    if (teamRes.data) setTeam(teamRes.data as Profile[]);
+    if (wabaRes.data) setWhatsappNumbers(wabaRes.data as WhatsappNumber[]);
+    setLoading(false); // show team/numbers immediately
+
+    // Load Evolution status in background — doesn't block the page render
+    if (token) {
+      try {
         const evoRes = await fetch(`${BACKEND_URL}/api/whatsapp/evolution/status`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+          headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (evoRes.ok) {
-          const statusData = await evoRes.json();
-          setEvoStatus(statusData);
-        }
+        if (evoRes.ok) setEvoStatus(await evoRes.json());
+      } catch (err) {
+        console.error('Error fetching Evolution status:', err);
       }
-    } catch (err) {
-      console.error('Error fetching settings logs:', err);
-    } finally {
-      setLoading(false);
-      setEvoLoading(false);
     }
+    setEvoLoading(false);
   };
 
   const loadEvolutionQrCode = async () => {
