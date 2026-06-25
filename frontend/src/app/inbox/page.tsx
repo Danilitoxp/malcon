@@ -1,5 +1,7 @@
 'use client';
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
@@ -306,7 +308,7 @@ export default function InboxPage() {
         return;
       }
 
-      const res = await fetch('http://localhost:3001/api/messages/send', {
+      const res = await fetch(`${BACKEND_URL}/api/messages/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -353,7 +355,7 @@ export default function InboxPage() {
 
     try {
       const token = await getAuthToken();
-      const res = await fetch(`http://localhost:3001/api/conversations/${activeConv.id}/status`, {
+      const res = await fetch(`${BACKEND_URL}/api/conversations/${activeConv.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ status: nextStatus }),
@@ -377,7 +379,7 @@ export default function InboxPage() {
 
     try {
       const token = await getAuthToken();
-      const res = await fetch(`http://localhost:3001/api/conversations/${targetConvId}/assign`, {
+      const res = await fetch(`${BACKEND_URL}/api/conversations/${targetConvId}/assign`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ assignedUserId: agentId || null }),

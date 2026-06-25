@@ -1,5 +1,7 @@
 'use client';
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
@@ -112,7 +114,7 @@ export default function SettingsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       if (token) {
-        const evoRes = await fetch('http://localhost:3001/api/whatsapp/evolution/status', {
+        const evoRes = await fetch(`${BACKEND_URL}/api/whatsapp/evolution/status`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -145,7 +147,7 @@ export default function SettingsPage() {
       const token = session?.access_token;
       if (!token) return;
 
-      const res = await fetch('http://localhost:3001/api/whatsapp/evolution/connect', {
+      const res = await fetch(`${BACKEND_URL}/api/whatsapp/evolution/connect`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -185,7 +187,7 @@ export default function SettingsPage() {
           const token = session?.access_token;
           if (!token) return;
 
-          const res = await fetch('http://localhost:3001/api/whatsapp/evolution/status', {
+          const res = await fetch(`${BACKEND_URL}/api/whatsapp/evolution/status`, {
             headers: {
               'Authorization': `Bearer ${token}`
             }
@@ -217,7 +219,7 @@ export default function SettingsPage() {
                 }, delay);
               });
 
-              const syncRes = await fetch('http://localhost:3001/api/whatsapp/evolution/sync', {
+              const syncRes = await fetch(`${BACKEND_URL}/api/whatsapp/evolution/sync`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -260,7 +262,7 @@ export default function SettingsPage() {
       const token = session?.access_token;
       if (!token) throw new Error('Sessão expirada.');
 
-      const res = await fetch('http://localhost:3001/api/whatsapp/evolution/setup', {
+      const res = await fetch(`${BACKEND_URL}/api/whatsapp/evolution/setup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ webhookUrl: evoWebhookUrl }),
@@ -290,7 +292,7 @@ export default function SettingsPage() {
 
       if (!token) throw new Error('Sessão expirada. Refaça login.');
 
-      const res = await fetch('http://localhost:3001/api/whatsapp/evolution/sync', {
+      const res = await fetch(`${BACKEND_URL}/api/whatsapp/evolution/sync`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -327,7 +329,7 @@ export default function SettingsPage() {
       const token = session?.access_token;
       if (!token) throw new Error('Sessão expirada. Refaça login.');
 
-      const res = await fetch('http://localhost:3001/api/whatsapp/evolution/sync', {
+      const res = await fetch(`${BACKEND_URL}/api/whatsapp/evolution/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ webhookUrl: evoWebhookUrl }),
@@ -358,7 +360,7 @@ export default function SettingsPage() {
 
       if (!token) throw new Error('Sessão expirada. Refaça login.');
 
-      const res = await fetch('http://localhost:3001/api/whatsapp-numbers', {
+      const res = await fetch(`${BACKEND_URL}/api/whatsapp-numbers`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -792,7 +794,7 @@ export default function SettingsPage() {
                               if (!confirm('Tem certeza que deseja desconectar o WhatsApp desta instância?')) return;
                               try {
                                 const { data: { session } } = await supabase.auth.getSession();
-                                await fetch(`http://localhost:3001/api/whatsapp/evolution/logout`, {
+                                await fetch(`${BACKEND_URL}/api/whatsapp/evolution/logout`, {
                                   method: 'DELETE',
                                   headers: { 'Authorization': `Bearer ${session?.access_token}` },
                                 });
