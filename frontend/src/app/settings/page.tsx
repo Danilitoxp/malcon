@@ -219,16 +219,14 @@ export default function SettingsPage() {
               });
 
               if (syncRes.ok) {
-                const syncResult = await syncRes.json();
                 setSyncProgress(100);
                 setSyncLabel('Concluído!');
-                setEvoSuccess(`${syncResult.chatsSynced} conversas, ${syncResult.contactsSynced} contatos e ${syncResult.messagesSynced} mensagens importados.`);
+                setTimeout(() => router.push('/inbox'), 1200);
               } else {
                 setSyncProgress(100);
-                setEvoError('WhatsApp conectado, mas a importação inicial falhou. Tente recarregar a página.');
+                setEvoError('WhatsApp conectado, mas a configuração inicial falhou. Tente recarregar a página.');
               }
               setEvoSyncing(false);
-              await loadSettingsData();
             }
           }
         } catch (err) {
@@ -294,8 +292,7 @@ export default function SettingsPage() {
         throw new Error(errData.message || 'Falha ao sincronizar com a Evolution API.');
       }
 
-      const syncResult = await res.json();
-      setEvoSuccess(`Sincronização concluída com sucesso! Sincronizados: ${syncResult.chatsSynced} chats, ${syncResult.contactsSynced} contatos e ${syncResult.messagesSynced} mensagens.`);
+      setEvoSuccess('Sincronização concluída! Novas mensagens serão recebidas automaticamente.');
       
       await loadSettingsData();
     } catch (err: any) {
