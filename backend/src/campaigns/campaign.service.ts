@@ -107,9 +107,19 @@ export class CampaignService {
       .eq('id', campaignId)
       .single();
 
+    // Resolve whatsapp_number_id for this Evolution instance (for inbox registration)
+    const { data: wbNumber } = await supabase
+      .from('whatsapp_numbers')
+      .select('id')
+      .eq('phone_number_id', `evolution:${instanceName}`)
+      .eq('active', true)
+      .maybeSingle();
+    const whatsappNumberId = wbNumber?.id || null;
+
+    // Fetch pending contacts with their name for {nome} substitution
     const { data: pending } = await supabase
       .from('campaign_contacts')
-      .select('id, phone')
+      .select('id, phone, contact_id, contacts(name)')
       .eq('campaign_id', campaignId)
       .eq('status', 'pending');
 
@@ -119,19 +129,69 @@ export class CampaignService {
         return;
       }
 
+      const contactName: string = (cc.contacts as any)?.name || '';
+      const finalMessage = campaign.message.replace(/\{nome\}/gi, contactName);
+      const phone = cc.phone.replace(/\D/g, '');
+
       try {
-        const phone = cc.phone.replace(/\D/g, '');
-        await axios.post(
+        const response = await axios.post(
           `${evoUrl}/message/sendText/${instanceName}`,
-          { number: phone, text: campaign.message },
+          { number: phone, text: finalMessage },
           { headers: { apikey: evoApiKey, 'Content-Type': 'application/json' } },
         );
+
+        const waMessageId = response.data?.key?.id || `camp_${campaignId}_${Date.now()}`;
+
         await supabase
           .from('campaign_contacts')
           .update({ status: 'sent', sent_at: new Date().toISOString() })
           .eq('id', cc.id);
         await supabase.rpc('increment_sent', { cid: campaignId });
         this.logger.log(`[Campaign ${campaignId}] Sent to ${cc.phone}`);
+
+        // Register sent message in inbox (find or create conversation)
+        if (whatsappNumberId && cc.contact_id) {
+          try {
+            let { data: conv } = await supabase
+              .from('conversations')
+              .select('id')
+              .eq('contact_id', cc.contact_id)
+              .eq('whatsapp_number_id', whatsappNumberId)
+              .maybeSingle();
+
+            let conversationId = '';
+            const now = new Date().toISOString();
+
+            if (!conv) {
+              const { data: newConv } = await supabase
+                .from('conversations')
+                .insert({
+                  contact_id: cc.contact_id,
+                  whatsapp_number_id: whatsappNumberId,
+                  status: 'open',
+                  last_message_at: now,
+                })
+                .select('id')
+                .single();
+              conversationId = newConv?.id || '';
+            } else {
+              conversationId = conv.id;
+              await supabase.from('conversations').update({ last_message_at: now }).eq('id', conversationId);
+            }
+
+            if (conversationId) {
+              await supabase.from('messages').insert({
+                conversation_id: conversationId,
+                direction: 'outbound',
+                content: finalMessage,
+                wa_message_id: waMessageId,
+                status: 'sent',
+              });
+            }
+          } catch (inboxErr: any) {
+            this.logger.warn(`[Campaign ${campaignId}] Inbox registration failed for ${cc.phone}: ${inboxErr.message}`);
+          }
+        }
       } catch (err: any) {
         await supabase
           .from('campaign_contacts')
