@@ -4,14 +4,15 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { 
-  LayoutDashboard, 
-  MessageSquare, 
-  Users, 
-  Settings, 
-  LogOut, 
-  User, 
-  MessageCircle 
+import {
+  LayoutDashboard,
+  MessageSquare,
+  Users,
+  Settings,
+  LogOut,
+  User,
+  MessageCircle,
+  Megaphone,
 } from 'lucide-react';
 
 interface Profile {
@@ -80,6 +81,7 @@ export default function Sidebar() {
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'WhatsApp', path: '/inbox', icon: MessageSquare },
     { name: 'Eleitores', path: '/contacts', icon: Users },
+    { name: 'Campanhas', path: '/campanhas', icon: Megaphone },
   ];
 
   const systemItems = [
