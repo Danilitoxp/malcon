@@ -211,6 +211,12 @@ export default function InboxPage() {
   useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
   useEffect(() => { filterStatusRef.current = filterStatus; }, [filterStatus]);
 
+  // Polling fallback — refreshes conversation list every 10s in case Supabase Realtime isn't enabled
+  useEffect(() => {
+    const poll = setInterval(() => loadConversations(true), 10000);
+    return () => clearInterval(poll);
+  }, []);
+
   // Real-time listener — mounted once, uses ref to avoid stale closures
   useEffect(() => {
     const messageSub = supabase
