@@ -6,16 +6,15 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 import { 
-  Settings, 
-  Plus, 
-  UserCheck, 
-  Smartphone, 
-  ShieldAlert, 
+  Settings,
+  Plus,
+  UserCheck,
+  Smartphone,
+  ShieldAlert,
   Key,
   Shield,
   Activity,
   RefreshCw,
-  Globe,
   LogOut,
   CheckCircle2
 } from 'lucide-react';
@@ -63,7 +62,6 @@ export default function SettingsPage() {
   const [evoStatus, setEvoStatus] = useState<any>(null);
   const [evoLoading, setEvoLoading] = useState(true);
   const [evoSyncing, setEvoSyncing] = useState(false);
-  const [evoWebhookUrl, setEvoWebhookUrl] = useState('');
   const [evoError, setEvoError] = useState('');
   const [evoSuccess, setEvoSuccess] = useState('');
   const [evoQrCode, setEvoQrCode] = useState<string>('');
@@ -72,7 +70,6 @@ export default function SettingsPage() {
   const [syncLabel, setSyncLabel] = useState<string>('');
   const [evoSetupDone, setEvoSetupDone] = useState<boolean>(false);
   const [evoSettingUp, setEvoSettingUp] = useState<boolean>(false);
-  const [evoUpdatingWebhook, setEvoUpdatingWebhook] = useState<boolean>(false);
 
   useEffect(() => {
     async function initSettings() {
@@ -122,13 +119,6 @@ export default function SettingsPage() {
         if (evoRes.ok) {
           const statusData = await evoRes.json();
           setEvoStatus(statusData);
-          
-          // Only pre-fill webhook URL when running in production (not localhost)
-          // With a remote Evolution API, localhost URLs don't work as webhooks
-          if (!window.location.origin.includes('localhost')) {
-            const backendBase = window.location.origin.replace('//frontend', '//backend');
-            setEvoWebhookUrl(`${backendBase}/api/webhooks/evolution`);
-          }
         }
       }
     } catch (err) {
@@ -225,9 +215,7 @@ export default function SettingsPage() {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({
-                  webhookUrl: evoWebhookUrl || undefined
-                })
+                body: JSON.stringify({})
               });
 
               if (syncRes.ok) {
@@ -265,7 +253,7 @@ export default function SettingsPage() {
       const res = await fetch(`${BACKEND_URL}/api/whatsapp/evolution/setup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ webhookUrl: evoWebhookUrl }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -298,9 +286,7 @@ export default function SettingsPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          webhookUrl: evoWebhookUrl || undefined
-        })
+        body: JSON.stringify({})
       });
 
       if (!res.ok) {
@@ -316,34 +302,6 @@ export default function SettingsPage() {
       setEvoError(err.message || 'Erro de conexão com o gateway backend.');
     } finally {
       setEvoSyncing(false);
-    }
-  };
-
-  const handleUpdateWebhook = async () => {
-    if (!evoWebhookUrl) return;
-    setEvoUpdatingWebhook(true);
-    setEvoError('');
-    setEvoSuccess('');
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) throw new Error('Sessão expirada. Refaça login.');
-
-      const res = await fetch(`${BACKEND_URL}/api/whatsapp/evolution/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ webhookUrl: evoWebhookUrl }),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.message || 'Falha ao atualizar webhook.');
-      }
-      setEvoSuccess('URL do webhook atualizada com sucesso! Novas mensagens serão recebidas.');
-    } catch (err: any) {
-      setEvoError(err.message || 'Erro ao atualizar webhook.');
-    } finally {
-      setEvoUpdatingWebhook(false);
     }
   };
 
@@ -823,56 +781,6 @@ export default function SettingsPage() {
                         </div>
                       )}
 
-                      {/* Webhook URL config panel */}
-                      {isAdmin && (
-                        <div style={{
-                          background: evoWebhookUrl && !evoWebhookUrl.includes('localhost') ? '#f0fdf4' : '#fffbeb',
-                          border: `1px solid ${evoWebhookUrl && !evoWebhookUrl.includes('localhost') ? 'rgba(22,163,74,0.15)' : 'rgba(245,158,11,0.3)'}`,
-                          borderRadius: '10px',
-                          padding: '14px 16px',
-                          display: 'flex',
-                          flexDirection: 'column' as const,
-                          gap: '10px',
-                        }}>
-                          <div>
-                            <p style={{ margin: '0 0 4px 0', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                              <Globe size={13} style={{ display: 'inline', marginRight: '5px', verticalAlign: 'middle' }} />
-                              URL do Webhook (para receber mensagens)
-                            </p>
-                            {evoWebhookUrl && !evoWebhookUrl.includes('localhost') ? (
-                              <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--success)', fontFamily: 'monospace', wordBreak: 'break-all' as const }}>
-                                ✓ {evoWebhookUrl}
-                              </p>
-                            ) : (
-                              <p style={{ margin: 0, fontSize: '0.78rem', color: '#b45309', lineHeight: 1.5 }}>
-                                ⚠️ {evoWebhookUrl.includes('localhost')
-                                  ? 'URL com "localhost" não funciona com a Evolution API remota. Informe uma URL pública.'
-                                  : 'Nenhum webhook configurado. A Evolution API não consegue entregar mensagens.'}
-                              </p>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                            <div style={{ flex: 1 }}>
-                              <input
-                                type="url"
-                                placeholder="https://seu-backend.com/api/webhooks/evolution"
-                                value={evoWebhookUrl}
-                                onChange={(e) => setEvoWebhookUrl(e.target.value)}
-                                className="input-field"
-                                style={{ width: '100%', boxSizing: 'border-box', fontSize: '0.82rem' }}
-                              />
-                            </div>
-                            <button
-                              onClick={handleUpdateWebhook}
-                              disabled={evoUpdatingWebhook || !evoWebhookUrl || evoWebhookUrl.includes('localhost')}
-                              className="btn btn-secondary"
-                              style={{ flexShrink: 0, fontSize: '0.82rem', padding: '8px 12px', whiteSpace: 'nowrap' as const }}
-                            >
-                              {evoUpdatingWebhook ? <RefreshCw className="animate-spin" size={14} /> : 'Atualizar'}
-                            </button>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   ) : (
                     /* DISCONNECTED STATE — 3 steps: Setup → QR → Progress */
@@ -915,31 +823,6 @@ export default function SettingsPage() {
                             </p>
                           </div>
 
-                          {/* Webhook URL input */}
-                          <div style={{ width: '100%', textAlign: 'left' }}>
-                            <label style={{ ...styles.label, display: 'block', marginBottom: '6px' }}>
-                              URL Pública do Webhook
-                            </label>
-                            <input
-                              type="url"
-                              placeholder="https://seu-backend.com/api/webhooks/evolution"
-                              value={evoWebhookUrl}
-                              onChange={(e) => setEvoWebhookUrl(e.target.value)}
-                              className="input-field"
-                              style={{ width: '100%', boxSizing: 'border-box' }}
-                            />
-                            {evoWebhookUrl.includes('localhost') && (
-                              <p style={{ margin: '6px 0 0 0', fontSize: '0.75rem', color: '#f59e0b', lineHeight: 1.4 }}>
-                                ⚠️ URLs com "localhost" não funcionam com servidores remotos. Use uma URL pública (ex: ngrok, domínio próprio).
-                              </p>
-                            )}
-                            {!evoWebhookUrl && (
-                              <p style={{ margin: '6px 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                                Necessário para receber mensagens. A Evolution API precisa de uma URL acessível na internet.
-                              </p>
-                            )}
-                          </div>
-
                           {evoError && (
                             <div className="btn-danger" style={{ ...styles.alertBox, width: '100%', fontSize: '0.85rem' }}>
                               {evoError}
@@ -949,7 +832,7 @@ export default function SettingsPage() {
                           <button
                             onClick={handleSetupEvolution}
                             className="btn btn-primary"
-                            disabled={evoSettingUp || !isAdmin || !evoWebhookUrl || evoWebhookUrl.includes('localhost')}
+                            disabled={evoSettingUp || !isAdmin}
                             style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.95rem', padding: '12px' }}
                           >
                             {evoSettingUp ? (

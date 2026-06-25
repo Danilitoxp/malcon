@@ -252,7 +252,7 @@ export class WhatsappController {
   // 9. Setup Evolution API instance before QR (POST /api/whatsapp/evolution/setup)
   @Post('whatsapp/evolution/setup')
   async setupEvolution(
-    @Body() body: { webhookUrl: string },
+    @Body() body: { webhookUrl?: string },
     @Headers('authorization') authHeader: string,
   ) {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {

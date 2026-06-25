@@ -573,6 +573,8 @@ export class WhatsappService {
     const evoUrl = this.configService.get<string>('EVO_URL');
     const evoApiKey = this.configService.get<string>('EVO_API_KEY');
     const instanceName = this.configService.get<string>('EVO_INSTANCE');
+    const appUrl = this.configService.get<string>('APP_URL') || '';
+    const finalWebhookUrl = webhookUrl || (appUrl ? `${appUrl}/api/webhooks/evolution` : '');
 
     if (!evoUrl || !evoApiKey || !instanceName) {
       throw new HttpException('Credenciais da Evolution API não configuradas no arquivo .env.', HttpStatus.BAD_REQUEST);
@@ -629,15 +631,15 @@ export class WhatsappService {
     }
 
     // Configure Webhook programmatically in Evolution API
-    if (webhookUrl) {
+    if (finalWebhookUrl) {
       try {
-        this.logger.log(`Configuring Evolution webhook for ${instanceName} to ${webhookUrl}`);
+        this.logger.log(`Configuring Evolution webhook for ${instanceName} to ${finalWebhookUrl}`);
         await axios.post(
           `${evoUrl}/webhook/set/${instanceName}`,
           {
             webhook: {
               enabled: true,
-              url: webhookUrl,
+              url: finalWebhookUrl,
               webhookByEvents: false,
               events: [
                 'MESSAGES_UPSERT',
@@ -951,10 +953,12 @@ export class WhatsappService {
   }
 
   // 10. Setup Evolution API instance (create if needed + webhook + settings)
-  async setupEvolution(webhookUrl: string): Promise<any> {
+  async setupEvolution(webhookUrl?: string): Promise<any> {
     const evoUrl = this.configService.get<string>('EVO_URL');
     const evoApiKey = this.configService.get<string>('EVO_API_KEY');
     const instanceName = this.configService.get<string>('EVO_INSTANCE');
+    const appUrl = this.configService.get<string>('APP_URL') || '';
+    const finalWebhookUrl = webhookUrl || (appUrl ? `${appUrl}/api/webhooks/evolution` : '');
 
     if (!evoUrl || !evoApiKey || !instanceName) {
       throw new HttpException('Credenciais da Evolution API não configuradas.', HttpStatus.BAD_REQUEST);
@@ -1007,13 +1011,13 @@ export class WhatsappService {
 
     // 3. Configure Webhook
     try {
-      this.logger.log(`[Setup] Configuring webhook → ${webhookUrl}`);
+      this.logger.log(`[Setup] Configuring webhook → ${finalWebhookUrl}`);
       await axios.post(
         `${evoUrl}/webhook/set/${instanceName}`,
         {
           webhook: {
             enabled: true,
-            url: webhookUrl,
+            url: finalWebhookUrl,
             webhookByEvents: false,
             events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE'],
           },
