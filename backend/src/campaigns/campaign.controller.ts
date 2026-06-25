@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Headers,
@@ -90,5 +91,21 @@ export class CampaignController {
   async pause(@Param('id') id: string, @Headers('authorization') auth: string) {
     await this.requireAdmin(auth);
     return this.campaignService.pauseCampaign(id);
+  }
+
+  @Patch(':id')
+  async update(
+    @Param('id') id: string,
+    @Body() body: { name?: string; message?: string; delaySeconds?: number },
+    @Headers('authorization') auth: string,
+  ) {
+    await this.requireAdmin(auth);
+    return this.campaignService.updateCampaign(id, body);
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string, @Headers('authorization') auth: string) {
+    await this.requireAdmin(auth);
+    return this.campaignService.deleteCampaign(id);
   }
 }

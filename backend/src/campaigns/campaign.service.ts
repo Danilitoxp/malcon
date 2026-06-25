@@ -155,6 +155,33 @@ export class CampaignService {
     this.logger.log(`Campaign ${campaignId} completed.`);
   }
 
+  async updateCampaign(id: string, data: { name?: string; message?: string; delaySeconds?: number }): Promise<any> {
+    const supabase = this.supabaseService.getClient();
+    const { data: campaign } = await supabase.from('campaigns').select('status').eq('id', id).single();
+    if (!campaign) throw new HttpException('Campanha não encontrada.', HttpStatus.NOT_FOUND);
+    if (campaign.status !== 'draft') throw new HttpException('Só é possível editar campanhas em rascunho.', HttpStatus.BAD_REQUEST);
+
+    const updates: any = {};
+    if (data.name) updates.name = data.name;
+    if (data.message) updates.message = data.message;
+    if (data.delaySeconds) updates.delay_seconds = data.delaySeconds;
+
+    const { data: updated, error } = await supabase.from('campaigns').update(updates).eq('id', id).select().single();
+    if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    return updated;
+  }
+
+  async deleteCampaign(id: string): Promise<any> {
+    const supabase = this.supabaseService.getClient();
+    const { data: campaign } = await supabase.from('campaigns').select('status').eq('id', id).single();
+    if (!campaign) throw new HttpException('Campanha não encontrada.', HttpStatus.NOT_FOUND);
+    if (campaign.status === 'running') throw new HttpException('Não é possível excluir uma campanha em execução. Pause-a primeiro.', HttpStatus.BAD_REQUEST);
+
+    const { error } = await supabase.from('campaigns').delete().eq('id', id);
+    if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    return { success: true };
+  }
+
   async listCampaigns(): Promise<any[]> {
     const { data } = await this.supabaseService
       .getClient()

@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 import {
   Megaphone, Plus, Play, Pause, CheckCircle2, XCircle,
-  Clock, Users, MessageSquare, RefreshCw, X
+  Clock, Users, RefreshCw, X, Pencil, Trash2, AlertTriangle,
 } from 'lucide-react';
 
 interface Campaign {
@@ -38,15 +38,18 @@ const STATUS_COLOR: Record<string, string> = {
   completed: '#22c55e',
 };
 
+const BR_STATES = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
+
 export default function CampanhasPage() {
   const router = useRouter();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [showForm, setShowForm] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Form state
+  // Create/Edit modal
+  const [showForm, setShowForm] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [formName, setFormName] = useState('');
   const [formMessage, setFormMessage] = useState('');
   const [formDelay, setFormDelay] = useState(10);
@@ -56,6 +59,10 @@ export default function CampanhasPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+
+  // Delete confirm
+  const [deleteTarget, setDeleteTarget] = useState<Campaign | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const getToken = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -88,7 +95,6 @@ export default function CampanhasPage() {
     init();
   }, [router, loadCampaigns]);
 
-  // Poll running campaigns every 3s
   useEffect(() => {
     const hasRunning = campaigns.some(c => c.status === 'running');
     if (!hasRunning) return;
@@ -97,7 +103,7 @@ export default function CampanhasPage() {
   }, [campaigns, loadCampaigns]);
 
   const fetchPreview = async () => {
-    if (!isAdmin) return;
+    if (!isAdmin || editingCampaign) return;
     setPreviewLoading(true);
     try {
       const token = await getToken();
@@ -112,29 +118,57 @@ export default function CampanhasPage() {
   };
 
   useEffect(() => {
-    if (!showForm) return;
+    if (!showForm || editingCampaign) return;
     const t = setTimeout(fetchPreview, 400);
     return () => clearTimeout(t);
   }, [formTypes, formStates, showForm]);
 
-  const handleCreateCampaign = async (e: React.FormEvent) => {
+  const openCreate = () => {
+    setEditingCampaign(null);
+    resetForm();
+    setShowForm(true);
+    setTimeout(fetchPreview, 100);
+  };
+
+  const openEdit = (c: Campaign) => {
+    setEditingCampaign(c);
+    setFormName(c.name);
+    setFormMessage(c.message);
+    setFormDelay(c.delay_seconds);
+    setFormTypes([]);
+    setFormStates([]);
+    setPreviewCount(c.total_contacts);
+    setFormError('');
+    setShowForm(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
     setFormSubmitting(true);
     try {
       const token = await getToken();
-      const res = await fetch(`${BACKEND_URL}/api/campaigns`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          name: formName,
-          message: formMessage,
-          delaySeconds: formDelay,
-          filters: { types: formTypes.length ? formTypes : undefined, states: formStates.length ? formStates : undefined },
-        }),
-      });
+      let res: Response;
+      if (editingCampaign) {
+        res = await fetch(`${BACKEND_URL}/api/campaigns/${editingCampaign.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ name: formName, message: formMessage, delaySeconds: formDelay }),
+        });
+      } else {
+        res = await fetch(`${BACKEND_URL}/api/campaigns`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            name: formName,
+            message: formMessage,
+            delaySeconds: formDelay,
+            filters: { types: formTypes.length ? formTypes : undefined, states: formStates.length ? formStates : undefined },
+          }),
+        });
+      }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Erro ao criar campanha.');
+      if (!res.ok) throw new Error(data.message || 'Erro ao salvar campanha.');
       setShowForm(false);
       resetForm();
       await loadCampaigns();
@@ -142,6 +176,28 @@ export default function CampanhasPage() {
       setFormError(err.message);
     } finally {
       setFormSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${BACKEND_URL}/api/campaigns/${deleteTarget.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.message);
+      }
+      setDeleteTarget(null);
+      await loadCampaigns(true);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -175,7 +231,7 @@ export default function CampanhasPage() {
   const toggleType = (t: string) =>
     setFormTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
 
-  const BR_STATES = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
+  const isEditing = !!editingCampaign;
 
   return (
     <div style={styles.container}>
@@ -185,22 +241,22 @@ export default function CampanhasPage() {
           <p style={styles.subtitle}>Envio em massa para eleitores via WhatsApp</p>
         </div>
         {isAdmin && (
-          <button className="btn btn-primary" onClick={() => { setShowForm(true); fetchPreview(); }} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button className="btn btn-primary" onClick={openCreate} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Plus size={16} /> Nova Campanha
           </button>
         )}
       </div>
 
-      {/* Create Campaign Modal */}
+      {/* Create/Edit Modal */}
       {showForm && (
         <div style={styles.modalOverlay} onClick={() => setShowForm(false)}>
           <div style={styles.modal} className="glass-panel" onClick={e => e.stopPropagation()}>
             <div style={styles.modalHeader}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Nova Campanha</h3>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{isEditing ? 'Editar Campanha' : 'Nova Campanha'}</h3>
               <button onClick={() => { setShowForm(false); resetForm(); }} style={styles.closeBtn}><X size={20} /></button>
             </div>
 
-            <form onSubmit={handleCreateCampaign} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {formError && <div style={styles.errorBox}>{formError}</div>}
 
               <div style={styles.field}>
@@ -224,16 +280,12 @@ export default function CampanhasPage() {
                 <label style={styles.label}>Intervalo entre mensagens</label>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>
                   {[5, 10, 15, 20, 30].map(s => (
-                    <button
-                      key={s} type="button"
-                      onClick={() => setFormDelay(s)}
-                      style={{
-                        padding: '6px 14px', borderRadius: '6px', border: '1px solid var(--border-muted)',
-                        background: formDelay === s ? 'var(--primary)' : 'transparent',
-                        color: formDelay === s ? '#fff' : 'var(--text-secondary)',
-                        cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500,
-                      }}
-                    >{s}s</button>
+                    <button key={s} type="button" onClick={() => setFormDelay(s)} style={{
+                      padding: '6px 14px', borderRadius: '6px', border: '1px solid var(--border-muted)',
+                      background: formDelay === s ? 'var(--primary)' : 'transparent',
+                      color: formDelay === s ? '#fff' : 'var(--text-secondary)',
+                      cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500,
+                    }}>{s}s</button>
                   ))}
                 </div>
                 <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -241,53 +293,95 @@ export default function CampanhasPage() {
                 </p>
               </div>
 
-              <div style={styles.field}>
-                <label style={styles.label}>Filtrar por tipo de contato</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {['ELEITOR', 'MILITANTE'].map(t => (
-                    <button key={t} type="button" onClick={() => toggleType(t)} style={{
-                      padding: '6px 14px', borderRadius: '6px', border: '1px solid var(--border-muted)',
-                      background: formTypes.includes(t) ? 'var(--primary)' : 'transparent',
-                      color: formTypes.includes(t) ? '#fff' : 'var(--text-secondary)',
-                      cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500,
-                    }}>{t}</button>
-                  ))}
-                  {formTypes.length > 0 && (
-                    <button type="button" onClick={() => setFormTypes([])} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-muted)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem' }}>Todos</button>
-                  )}
-                </div>
-              </div>
+              {!isEditing && (
+                <>
+                  <div style={styles.field}>
+                    <label style={styles.label}>Filtrar por tipo de contato</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {['ELEITOR', 'MILITANTE'].map(t => (
+                        <button key={t} type="button" onClick={() => toggleType(t)} style={{
+                          padding: '6px 14px', borderRadius: '6px', border: '1px solid var(--border-muted)',
+                          background: formTypes.includes(t) ? 'var(--primary)' : 'transparent',
+                          color: formTypes.includes(t) ? '#fff' : 'var(--text-secondary)',
+                          cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500,
+                        }}>{t}</button>
+                      ))}
+                      {formTypes.length > 0 && (
+                        <button type="button" onClick={() => setFormTypes([])} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-muted)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem' }}>Todos</button>
+                      )}
+                    </div>
+                  </div>
 
-              <div style={styles.field}>
-                <label style={styles.label}>Filtrar por estado (opcional)</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '6px' }}>
-                  {BR_STATES.map(s => (
-                    <button key={s} type="button" onClick={() => setFormStates(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])} style={{
-                      padding: '4px 10px', borderRadius: '5px', border: '1px solid var(--border-muted)',
-                      background: formStates.includes(s) ? 'var(--primary)' : 'transparent',
-                      color: formStates.includes(s) ? '#fff' : 'var(--text-secondary)',
-                      cursor: 'pointer', fontSize: '0.78rem', fontWeight: 500,
-                    }}>{s}</button>
-                  ))}
-                </div>
-              </div>
+                  <div style={styles.field}>
+                    <label style={styles.label}>Filtrar por estado (opcional)</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '6px' }}>
+                      {BR_STATES.map(s => (
+                        <button key={s} type="button" onClick={() => setFormStates(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])} style={{
+                          padding: '4px 10px', borderRadius: '5px', border: '1px solid var(--border-muted)',
+                          background: formStates.includes(s) ? 'var(--primary)' : 'transparent',
+                          color: formStates.includes(s) ? '#fff' : 'var(--text-secondary)',
+                          cursor: 'pointer', fontSize: '0.78rem', fontWeight: 500,
+                        }}>{s}</button>
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Preview */}
-              <div style={{ background: '#f0fdf4', border: '1px solid rgba(22,163,74,0.15)', borderRadius: '8px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Users size={16} color="var(--success)" />
-                {previewLoading ? (
-                  <span style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>Calculando...</span>
-                ) : (
-                  <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--success)' }}>
-                    {previewCount ?? '—'} contatos serão atingidos
-                  </span>
-                )}
-              </div>
+                  <div style={{ background: '#f0fdf4', border: '1px solid rgba(22,163,74,0.15)', borderRadius: '8px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Users size={16} color="var(--success)" />
+                    {previewLoading ? (
+                      <span style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>Calculando...</span>
+                    ) : (
+                      <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--success)' }}>
+                        {previewCount ?? '—'} contatos serão atingidos
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {isEditing && (
+                <div style={{ background: '#fffbeb', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', padding: '10px 14px', fontSize: '0.82rem', color: '#92400e' }}>
+                  Os filtros de contatos não podem ser alterados após a criação.
+                </div>
+              )}
 
               <button type="submit" className="btn btn-primary" disabled={formSubmitting || !formName || !formMessage} style={{ padding: '12px' }}>
-                {formSubmitting ? <><RefreshCw className="animate-spin" size={15} /> Criando...</> : 'Criar Campanha'}
+                {formSubmitting ? <><RefreshCw className="animate-spin" size={15} /> Salvando...</> : isEditing ? 'Salvar Alterações' : 'Criar Campanha'}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirm Modal */}
+      {deleteTarget && (
+        <div style={styles.modalOverlay} onClick={() => setDeleteTarget(null)}>
+          <div style={{ ...styles.modal, maxWidth: '420px' }} className="glass-panel" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', textAlign: 'center' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(220,38,38,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <AlertTriangle size={24} color="#dc2626" />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '6px' }}>Excluir campanha?</h3>
+                <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  A campanha <strong>"{deleteTarget.name}"</strong> e todos os seus registros de contatos serão removidos permanentemente.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+                <button className="btn btn-secondary" style={{ flex: 1, padding: '10px' }} onClick={() => setDeleteTarget(null)}>
+                  Cancelar
+                </button>
+                <button
+                  className="btn"
+                  style={{ flex: 1, padding: '10px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  disabled={deleteLoading}
+                  onClick={handleDelete}
+                >
+                  {deleteLoading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  Excluir
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -312,7 +406,9 @@ export default function CampanhasPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {campaigns.map(c => {
             const progress = c.total_contacts > 0 ? Math.round(((c.sent_count + c.failed_count) / c.total_contacts) * 100) : 0;
-            const isRunning = actionLoading === c.id + '_start' || actionLoading === c.id + '_pause';
+            const isBusy = actionLoading === c.id + '_start' || actionLoading === c.id + '_pause';
+            const canEdit = c.status === 'draft';
+            const canDelete = c.status !== 'running';
             return (
               <div key={c.id} className="glass-panel" style={{ padding: '20px 24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
@@ -322,16 +418,17 @@ export default function CampanhasPage() {
                       <span style={{
                         fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: '99px',
                         background: STATUS_COLOR[c.status] + '20', color: STATUS_COLOR[c.status],
-                        textTransform: 'uppercase' as const, letterSpacing: '0.05em'
+                        textTransform: 'uppercase' as const, letterSpacing: '0.05em',
+                        display: 'inline-flex', alignItems: 'center', gap: '4px',
                       }}>
-                        {c.status === 'running' && <RefreshCw size={10} className="animate-spin" style={{ display: 'inline', marginRight: '4px' }} />}
+                        {c.status === 'running' && <RefreshCw size={10} className="animate-spin" />}
                         {STATUS_LABEL[c.status]}
                       </span>
                     </div>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 12px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, maxWidth: '500px' }}>
                       {c.message}
                     </p>
-                    <div style={{ display: 'flex', gap: '20px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', gap: '20px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '12px', flexWrap: 'wrap' as const }}>
                       <span><Users size={13} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />{c.total_contacts} contatos</span>
                       <span><CheckCircle2 size={13} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle', color: '#22c55e' }} />{c.sent_count} enviados</span>
                       {c.failed_count > 0 && <span><XCircle size={13} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle', color: '#ef4444' }} />{c.failed_count} falhas</span>}
@@ -353,16 +450,17 @@ export default function CampanhasPage() {
                       </div>
                     )}
                   </div>
+
                   {isAdmin && (
-                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
                       {(c.status === 'draft' || c.status === 'paused') && (
                         <button
                           className="btn btn-primary"
                           style={{ padding: '8px 14px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                          disabled={isRunning}
+                          disabled={isBusy}
                           onClick={() => handleStart(c.id)}
                         >
-                          {isRunning ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
+                          {isBusy ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
                           {c.status === 'paused' ? 'Retomar' : 'Iniciar'}
                         </button>
                       )}
@@ -370,11 +468,29 @@ export default function CampanhasPage() {
                         <button
                           className="btn btn-secondary"
                           style={{ padding: '8px 14px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                          disabled={isRunning}
+                          disabled={isBusy}
                           onClick={() => handlePause(c.id)}
                         >
-                          {isRunning ? <RefreshCw size={14} className="animate-spin" /> : <Pause size={14} />}
+                          {isBusy ? <RefreshCw size={14} className="animate-spin" /> : <Pause size={14} />}
                           Pausar
+                        </button>
+                      )}
+                      {canEdit && (
+                        <button
+                          title="Editar"
+                          onClick={() => openEdit(c)}
+                          style={{ background: 'transparent', border: '1px solid var(--border-muted)', borderRadius: '8px', padding: '8px 10px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}
+                        >
+                          <Pencil size={15} />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          title="Excluir"
+                          onClick={() => setDeleteTarget(c)}
+                          style={{ background: 'transparent', border: '1px solid rgba(220,38,38,0.2)', borderRadius: '8px', padding: '8px 10px', cursor: 'pointer', color: '#dc2626', display: 'flex', alignItems: 'center' }}
+                        >
+                          <Trash2 size={15} />
                         </button>
                       )}
                     </div>
