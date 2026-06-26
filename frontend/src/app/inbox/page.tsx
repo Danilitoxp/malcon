@@ -50,6 +50,8 @@ export default function InboxPage() {
   const activeConvRef = useRef<Conversation | null>(null);
   const filterStatusRef = useRef<'open' | 'closed'>('open');
   const conversationsRef = useRef<Conversation[]>([]);
+  const lastConvTimestamps = useRef<Map<string, string>>(new Map());
+  const initialLoadDone = useRef(false);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
@@ -97,30 +99,7 @@ export default function InboxPage() {
     } catch { /* silently ignore */ }
   }, []);
 
-  useEffect(() => {
-    async function initInbox() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { router.push('/login'); return; }
-      setCurrentAgentId(session.user.id);
-
-      // Request notification permission
-      if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
-
-      await Promise.all([loadConversations(), loadAgents()]);
-      checkEvoStatus();
-    }
-    initInbox();
-  }, [router, filterStatus]);
-
-  // Poll Evolution status every 30s
-  useEffect(() => {
-    const interval = setInterval(checkEvoStatus, 30000);
-    return () => clearInterval(interval);
-  }, [checkEvoStatus]);
-
-  const loadConversations = async (silent = false) => {
+  const loadConversations = useCallback(async (silent = false) => {
     if (!silent) setLoadingChats(true);
     try {
       const { data, error } = await supabase
@@ -137,6 +116,32 @@ export default function InboxPage() {
 
       if (error) throw error;
       const convList = data as any[] || [];
+
+      // Detect new inbound messages via polling (reliable fallback for realtime)
+      if (initialLoadDone.current) {
+        for (const conv of convList) {
+          const prevTs = lastConvTimestamps.current.get(conv.id);
+          const lastMsg = conv.messages?.[0];
+          if (
+            prevTs &&
+            conv.last_message_at > prevTs &&
+            lastMsg?.direction === 'inbound' &&
+            activeConvRef.current?.id !== conv.id
+          ) {
+            setUnreadConvIds(s => { const next = new Set(s); next.add(conv.id); return next; });
+            showBrowserNotification(
+              conv.contacts?.name || 'Nova mensagem',
+              lastMsg.content,
+              conv.contacts?.profile_pic_url,
+            );
+          }
+        }
+      }
+      for (const conv of convList) {
+        lastConvTimestamps.current.set(conv.id, conv.last_message_at);
+      }
+      initialLoadDone.current = true;
+
       setConversations(convList);
 
       if (typeof window !== 'undefined') {
@@ -156,7 +161,7 @@ export default function InboxPage() {
     } finally {
       setLoadingChats(false);
     }
-  };
+  }, [showBrowserNotification]);
 
   const loadAgents = async () => {
     try {
@@ -167,6 +172,28 @@ export default function InboxPage() {
       console.error('Error loading agents:', err);
     }
   };
+
+  useEffect(() => {
+    async function initInbox() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { router.push('/login'); return; }
+      setCurrentAgentId(session.user.id);
+
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+
+      await Promise.all([loadConversations(), loadAgents()]);
+      checkEvoStatus();
+    }
+    initInbox();
+  }, [router, filterStatus, loadConversations, checkEvoStatus]);
+
+  // Poll Evolution status every 30s
+  useEffect(() => {
+    const interval = setInterval(checkEvoStatus, 30000);
+    return () => clearInterval(interval);
+  }, [checkEvoStatus]);
 
   const loadMessages = async (convId: string) => {
     setLoadingMessages(true);
@@ -207,7 +234,7 @@ export default function InboxPage() {
   useEffect(() => {
     const poll = setInterval(() => loadConversations(true), 3000);
     return () => clearInterval(poll);
-  }, []);
+  }, [loadConversations]);
 
   // Realtime
   useEffect(() => {
@@ -415,7 +442,7 @@ export default function InboxPage() {
                     onClick={() => handleSelectConv(c)}
                     style={{ ...styles.chatRow, ...(isSelected ? styles.chatRowActive : {}) }}
                   >
-                    <div style={{ ...styles.chatAvatar, ...(hasUnread ? { border: '2px solid var(--primary)' } : {}) }}>
+                    <div style={styles.chatAvatar}>
                       {c.contacts?.profile_pic_url ? (
                         <img
                           src={c.contacts.profile_pic_url}
@@ -429,14 +456,14 @@ export default function InboxPage() {
                     </div>
                     <div style={{ flex: 1, overflow: 'hidden' }}>
                       <div style={styles.chatRowMeta}>
-                        <span style={{ ...styles.chatRowName, ...(hasUnread ? { color: 'var(--primary)' } : {}) }}>
+                        <span style={styles.chatRowName}>
                           {c.contacts?.name}
                         </span>
                         <span style={styles.chatRowTime}>
                           {new Date(c.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <span style={{ ...styles.chatLastMessageText, ...(hasUnread ? { fontWeight: 600, color: 'var(--text-primary)' } : {}) }}>
+                      <span style={styles.chatLastMessageText}>
                         {c.messages?.[0]?.content || 'Sem mensagens'}
                       </span>
                     </div>
