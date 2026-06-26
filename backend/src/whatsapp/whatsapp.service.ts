@@ -1091,30 +1091,35 @@ export class WhatsappService {
       throw new HttpException('Credenciais da Evolution API não configuradas.', HttpStatus.BAD_REQUEST);
     }
 
+    const supabase = this.supabaseService.getClient();
+
     try {
       this.logger.log(`Logging out Evolution instance ${instanceName}`);
-      const response = await axios.delete(
-        `${evoUrl}/instance/logout/${instanceName}`,
-        {
-          headers: { apikey: evoApiKey },
-        },
-      );
-
-      // Mark the channel as inactive in DB
-      const supabase = this.supabaseService.getClient();
-      await supabase
-        .from('whatsapp_numbers')
-        .update({ active: false })
-        .eq('phone_number_id', `evolution:${instanceName}`);
-
-      return response.data;
+      await axios.delete(`${evoUrl}/instance/logout/${instanceName}`, {
+        headers: { apikey: evoApiKey },
+      });
     } catch (error) {
-      const errorMsg = error.response?.data || error.message;
-      this.logger.error(`Error logging out Evolution instance: ${JSON.stringify(errorMsg)}`);
-      throw new HttpException(
-        { message: 'Falha ao desconectar instância', details: errorMsg },
-        HttpStatus.BAD_GATEWAY,
-      );
+      const status = error.response?.status;
+      const msg = JSON.stringify(error.response?.data || error.message);
+
+      // 400 "not connected" = already disconnected, treat as success
+      if (status === 400) {
+        this.logger.warn(`Instance ${instanceName} was already disconnected: ${msg}`);
+      } else {
+        this.logger.error(`Error logging out Evolution instance: ${msg}`);
+        throw new HttpException(
+          { message: 'Falha ao desconectar instância', details: error.response?.data || error.message },
+          HttpStatus.BAD_GATEWAY,
+        );
+      }
     }
+
+    // Always mark channel as inactive in DB, regardless of Evolution API response
+    await supabase
+      .from('whatsapp_numbers')
+      .update({ active: false })
+      .eq('phone_number_id', `evolution:${instanceName}`);
+
+    return { success: true };
   }
 }
