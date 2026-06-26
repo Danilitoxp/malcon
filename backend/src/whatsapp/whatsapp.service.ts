@@ -703,7 +703,21 @@ export class WhatsappService {
     const event = payload.event;
     const instanceName = payload.instance;
 
-    if (!instanceName || !['messages.upsert', 'messages.update'].includes(event)) {
+    if (!instanceName) return;
+
+    // Auto-sync when WhatsApp connects — no need to wait for frontend polling
+    if (event === 'connection.update' || event === 'CONNECTION_UPDATE') {
+      const state = payload.data?.state || payload.data?.instance?.state;
+      if (state === 'open') {
+        this.logger.log(`[Webhook] Instance ${instanceName} connected. Auto-syncing...`);
+        this.syncEvolution().catch(err =>
+          this.logger.warn(`[Webhook] Auto-sync failed: ${err.message}`),
+        );
+      }
+      return;
+    }
+
+    if (!['messages.upsert', 'messages.update'].includes(event)) {
       return;
     }
 
