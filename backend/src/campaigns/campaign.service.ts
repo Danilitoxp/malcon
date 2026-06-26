@@ -94,6 +94,27 @@ export class CampaignService {
     return { success: true };
   }
 
+  private async isEvolutionConnected(evoUrl: string, evoApiKey: string, instanceName: string): Promise<boolean> {
+    try {
+      const res = await axios.get(`${evoUrl}/instance/connectionState/${instanceName}`, {
+        headers: { apikey: evoApiKey },
+        timeout: 5000,
+      });
+      return res.data?.instance?.state === 'open';
+    } catch {
+      return false;
+    }
+  }
+
+  private async autoPauseCampaign(campaignId: string, reason: string): Promise<void> {
+    this.runningCampaigns.delete(campaignId);
+    await this.supabaseService.getClient()
+      .from('campaigns')
+      .update({ status: 'paused' })
+      .eq('id', campaignId);
+    this.logger.warn(`[Campaign ${campaignId}] AUTO-PAUSED — ${reason}`);
+  }
+
   private async runCampaignLoop(campaignId: string): Promise<void> {
     this.runningCampaigns.add(campaignId);
     const supabase = this.supabaseService.getClient();
@@ -123,10 +144,24 @@ export class CampaignService {
       .eq('campaign_id', campaignId)
       .eq('status', 'pending');
 
+    let consecutiveFailures = 0;
+    let totalSent = 0;
+    const MAX_CONSECUTIVE_FAILURES = 3;
+    const CONNECTION_CHECK_EVERY = 10;
+
     for (const cc of pending || []) {
       if (!this.runningCampaigns.has(campaignId)) {
         this.logger.log(`Campaign ${campaignId} paused mid-run.`);
         return;
+      }
+
+      // Periodic connection check every N sends
+      if (totalSent > 0 && totalSent % CONNECTION_CHECK_EVERY === 0) {
+        const connected = await this.isEvolutionConnected(evoUrl, evoApiKey, instanceName);
+        if (!connected) {
+          await this.autoPauseCampaign(campaignId, `WhatsApp desconectado após ${totalSent} envios (possível ban)`);
+          return;
+        }
       }
 
       const contactName: string = (cc.contacts as any)?.name || '';
@@ -148,6 +183,8 @@ export class CampaignService {
           .eq('id', cc.id);
         await supabase.rpc('increment_sent', { cid: campaignId });
         this.logger.log(`[Campaign ${campaignId}] Sent to ${cc.phone}`);
+        consecutiveFailures = 0;
+        totalSent++;
 
         // Register sent message in inbox (find or create conversation)
         if (whatsappNumberId && cc.contact_id) {
@@ -199,6 +236,19 @@ export class CampaignService {
           .eq('id', cc.id);
         await supabase.rpc('increment_failed', { cid: campaignId });
         this.logger.warn(`[Campaign ${campaignId}] Failed to ${cc.phone}: ${err.message}`);
+        consecutiveFailures++;
+        totalSent++;
+
+        // After N consecutive failures, check if the number was banned
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          const connected = await this.isEvolutionConnected(evoUrl, evoApiKey, instanceName);
+          if (!connected) {
+            await this.autoPauseCampaign(campaignId, `${consecutiveFailures} falhas consecutivas + WhatsApp desconectado (possível ban)`);
+            return;
+          }
+          // Still connected — bad numbers streak, just reset the counter
+          consecutiveFailures = 0;
+        }
       }
 
       // Random jitter ±30% to appear more human

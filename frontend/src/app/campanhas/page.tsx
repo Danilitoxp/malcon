@@ -2,12 +2,12 @@
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 import {
   Megaphone, Plus, Play, Pause, CheckCircle2, XCircle,
-  Clock, Users, RefreshCw, X, Pencil, Trash2, AlertTriangle,
+  Clock, Users, RefreshCw, X, Pencil, Trash2, AlertTriangle, WifiOff,
 } from 'lucide-react';
 
 interface Campaign {
@@ -63,6 +63,7 @@ export default function CampanhasPage() {
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<Campaign | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [evoConnected, setEvoConnected] = useState(true);
 
   const getToken = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -84,6 +85,19 @@ export default function CampanhasPage() {
     }
   }, []);
 
+  const checkEvoStatus = useCallback(async () => {
+    try {
+      const token = await getToken();
+      const res = await fetch(`${BACKEND_URL}/api/whatsapp/evolution/status`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEvoConnected(data.status === 'connected');
+      }
+    } catch { setEvoConnected(false); }
+  }, []);
+
   useEffect(() => {
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -91,9 +105,12 @@ export default function CampanhasPage() {
       const { data: profile } = await supabase.from('profiles').select('role').eq('id', session.user.id).single();
       setIsAdmin(profile?.role === 'admin');
       await loadCampaigns();
+      checkEvoStatus();
     }
     init();
-  }, [router, loadCampaigns]);
+    const interval = setInterval(checkEvoStatus, 30000);
+    return () => clearInterval(interval);
+  }, [router, loadCampaigns, checkEvoStatus]);
 
   useEffect(() => {
     const hasRunning = campaigns.some(c => c.status === 'running');
@@ -235,6 +252,12 @@ export default function CampanhasPage() {
 
   return (
     <div style={styles.container}>
+      {!evoConnected && (
+        <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.875rem', color: '#92400e', fontWeight: 500 }}>
+          <WifiOff size={16} color="#d97706" />
+          <span>WhatsApp desconectado — campanhas iniciadas agora podem falhar. Verifique as <a href="/settings" style={{ color: '#d97706', textDecoration: 'underline' }}>Configurações</a>.</span>
+        </div>
+      )}
       <div style={styles.header}>
         <div>
           <h2 style={styles.title}>Campanhas</h2>
