@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { SupabaseModule } from './supabase/supabase.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { CampaignModule } from './campaigns/campaign.module';
+import { PushModule } from './push/push.module';
 
 @Module({
   imports: [
@@ -10,6 +11,7 @@ import { CampaignModule } from './campaigns/campaign.module';
     SupabaseModule,
     WhatsappModule,
     CampaignModule,
+    PushModule,
   ],
 })
 export class AppModule {}

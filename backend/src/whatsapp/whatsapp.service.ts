@@ -2,6 +2,7 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { CryptoService } from '../shared/crypto.service';
+import { PushService } from '../push/push.service';
 import axios from 'axios';
 import * as crypto from 'crypto';
 
@@ -13,6 +14,7 @@ export class WhatsappService {
     private configService: ConfigService,
     private supabaseService: SupabaseService,
     private cryptoService: CryptoService,
+    private pushService: PushService,
   ) {}
 
   // 1. Verify Meta Webhook Challenge (GET /webhooks/whatsapp)
@@ -923,6 +925,18 @@ export class WhatsappService {
 
     if (msgInsertError) {
       this.logger.error(`Error inserting webhook message: ${msgInsertError.message}`);
+    }
+
+    // Push notification for inbound messages
+    if (!fromMe) {
+      const senderName = messageData.pushName || contactPhoneFormatted;
+      this.pushService.sendToAll({
+        title: senderName,
+        body: content.slice(0, 120),
+        icon: '/favicon.ico',
+        url: '/inbox',
+        tag: conversationId,
+      }).catch(err => this.logger.warn(`Push send error: ${err.message}`));
     }
   }
 

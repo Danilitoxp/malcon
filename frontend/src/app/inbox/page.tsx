@@ -5,6 +5,7 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:300
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
+import { registerPushNotifications } from '../../lib/push';
 import {
   Send, User, Check, CheckCheck, Lock, Unlock, AlertCircle, Inbox, WifiOff,
 } from 'lucide-react';
@@ -179,9 +180,8 @@ export default function InboxPage() {
       if (!session) { router.push('/login'); return; }
       setCurrentAgentId(session.user.id);
 
-      if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
+      // Register service worker + push subscription (handles permission request internally)
+      registerPushNotifications(session.access_token);
 
       await Promise.all([loadConversations(), loadAgents()]);
       checkEvoStatus();
