@@ -746,14 +746,23 @@ export default function SettingsPage() {
                               if (!confirm('Tem certeza que deseja desconectar o WhatsApp desta instância?')) return;
                               try {
                                 const { data: { session } } = await supabase.auth.getSession();
-                                await fetch(`${BACKEND_URL}/api/whatsapp/evolution/logout`, {
+                                const res = await fetch(`${BACKEND_URL}/api/whatsapp/evolution/logout`, {
                                   method: 'DELETE',
                                   headers: { 'Authorization': `Bearer ${session?.access_token}` },
                                 });
+                                if (!res.ok) {
+                                  const err = await res.json().catch(() => ({}));
+                                  setEvoError(err.message || 'Erro ao desconectar.');
+                                  return;
+                                }
+                                // Update state directly — re-fetching from Evolution API would show
+                                // "connected" for a brief moment since it takes time to disconnect
+                                setEvoStatus((prev: any) => ({ ...prev, status: 'disconnected' }));
                                 setEvoQrCode('');
-                                await loadSettingsData();
+                                setEvoSetupDone(true);
                               } catch (err) {
                                 console.error('Logout error:', err);
+                                setEvoError('Erro ao desconectar. Tente novamente.');
                               }
                             }}
                           >
